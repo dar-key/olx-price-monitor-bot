@@ -2,10 +2,12 @@ import asyncio
 import sqlite3
 import logging
 import os
+import re
 from aiogram import Bot, Dispatcher
 from aiogram.filters import CommandStart
 from aiogram.types import Message
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright, TimeoutError
+from playwright_stealth import Stealth
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -16,6 +18,7 @@ if not BOT_TOKEN:
     exit()
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
@@ -59,40 +62,30 @@ def get_all_monitors():
 
 
 async def parse_olx_first_price(url: str) -> str:
-    try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            context = await browser.new_context(
+    async with Stealth().use_async(async_playwright()) as p:
+        async with await p.chromium.launch(headless=True) as browser:
+            async with await browser.new_context(
                 viewport={"width": 1920, "height": 1080},
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            )
-            page = await context.new_page()
+            ) as context:
 
-            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                page = await context.new_page()
 
-            price_element = await page.query_selector(
-                'div[data-testid="prices-wrapper"] h3'
-            )
+                try:
+                    await page.goto(url, wait_until="domcontentloaded", timeout=30000)
 
-            if not price_element:
-                price_element = await page.query_selector('p[data-testid="ad-price"]')
+                    price_pattern = re.compile(r"\d+.*(тг\.|₸)", re.IGNORECASE)
+                    price_locator = page.get_by_text(price_pattern)
 
-            if not price_element:
-                price_element = await page.query_selector(
-                    '//p[contains(text(), "тг.")] | //h3[contains(text(), "тг.")]'
-                )
+                    await price_locator.first.wait_for(state="visible", timeout=5000)
 
-            if price_element:
-                price = await price_element.inner_text()
-                await browser.close()
-                return price.strip()
+                    raw_price = await price_locator.first.inner_text()
+                    return raw_price.strip()
 
-            await page.screenshot(path="debug_screenshot.png")
-            await browser.close()
-            return "Error: Could not find price layout on this page"
-
-    except Exception as e:
-        return f"Error: {str(e)}"
+                except TimeoutError:
+                    logger.error(f"Failed to find price layout on page: {url}")
+                    await page.screenshot(path="debug_screenshot.png")
+                    return "Error: Could not find price layout on this page"
 
 
 @dp.message(CommandStart())
