@@ -1,4 +1,5 @@
 import asyncio
+import sqlite3
 import logging
 import os
 from aiogram import Bot, Dispatcher
@@ -8,17 +9,53 @@ from playwright.async_api import async_playwright
 from dotenv import load_dotenv
 
 load_dotenv()
-
-logging.basicConfig(level=logging.INFO)
-
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 if not BOT_TOKEN:
     print("Error: no bot token")
     exit()
 
+logging.basicConfig(level=logging.INFO)
+
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
+
+
+def init_db():
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS monitors (
+            user_id INTEGER,
+            url TEXT UNIQUE,
+            last_price TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def save_monitor(user_id: int, url: str, price: str):
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT OR REPLACE INTO monitors (user_id, url, last_price)
+        VALUES (?, ?, ?)
+    """,
+        (user_id, url, price),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_all_monitors():
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id, url, last_price FROM monitors")
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
 
 
 async def parse_olx_first_price(url: str) -> str:
