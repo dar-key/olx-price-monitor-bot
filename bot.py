@@ -1,5 +1,5 @@
 import asyncio
-import sqlite3
+import aiosqlite
 import logging
 import os
 import re
@@ -29,43 +29,42 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 browser = None
+monitoring_task = None
+DB_NAME = "database.db"
 
 
-def init_db():
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    cursor.execute("""
+async def init_db():
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("""
         CREATE TABLE IF NOT EXISTS monitors (
             user_id INTEGER,
             url TEXT UNIQUE,
             last_price TEXT
         )
     """)
-    conn.commit()
-    conn.close()
+        await db.commit()
+    logger.info("Database initialized")
 
 
-def save_monitor(user_id: int, url: str, price: str):
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    cursor.execute(
-        """
+async def save_monitor(user_id: int, url: str, price: str):
+
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            """
         INSERT OR REPLACE INTO monitors (user_id, url, last_price)
         VALUES (?, ?, ?)
     """,
-        (user_id, url, price),
-    )
-    conn.commit()
-    conn.close()
+            (user_id, url, price),
+        )
+        await db.commit()
 
 
-def get_all_monitors():
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT user_id, url, last_price FROM monitors")
-    rows = cursor.fetchall()
-    conn.close()
-    return rows
+async def get_all_monitors():
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute(
+            "SELECT user_id, url, last_price FROM monitors"
+        ) as cursor:
+            return await cursor.fetchall()
 
 
 async def parse_olx_first_price(url: str) -> str:
@@ -101,6 +100,54 @@ async def parse_olx_first_price(url: str) -> str:
             return f"Error: Unexpected browser failure ({type(e).__name__})"
 
 
+async def price_monitoring_loop():
+    while True:
+        try:
+            # Check prices every 15 min (900 sec)
+            await asyncio.sleep(900)
+
+            logger.info("Executing scheduled price monitoring cycle...")
+            monitors = await get_all_monitors()
+
+            for user_id, url, last_price in monitors:
+                current_price = await parse_olx_first_price(url)
+
+                if current_price.startswith("Error"):
+                    logger.warning(f"Background check failed for monitored URL: {url}")
+                    continue
+
+                # Price change
+                if current_price != last_price:
+                    logger.info(
+                        f"Price shift detected for user {user_id}: {last_price} -> {current_price}"
+                    )
+
+                    await save_monitor(user_id, url, current_price)
+
+                    try:
+                        await bot.send_message(
+                            chat_id=user_id,
+                            text=(
+                                f"<b>Изменение цены на OLX!</b>\n\n"
+                                f"Старая цена: <s>{last_price}</s>\n"
+                                f"Новая цена: <b>{current_price}</b>\n\n"
+                                f"<a href='{url}'>{url}</a>"
+                            ),
+                            parse_mode="HTML",
+                            disable_web_page_preview=False,
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"Could not deliver notification to user {user_id}: {e}"
+                        )
+
+        except asyncio.CancelledError:
+            logger.info("Price monitoring loop canceled gracefully.")
+            break
+        except Exception as e:
+            logger.error(f"Error in price monitoring task: {e}")
+
+
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
     await message.answer(
@@ -122,24 +169,54 @@ async def handle_link(message: Message):
     current_price = await parse_olx_first_price(url)
 
     await waiting_msg.delete()
+
+    if current_price.startswith("Error"):
+        await message.answer(
+            f"Не удалось получить цену!\n\n"
+            f"Убедитесь, что объявление актуально и ссылка открывается"
+        )
+        return
+
+    await save_monitor(message.from_user.id, url, current_price)
+
     await message.answer(
-        f"**Последняя цена по вашей ссылке:**\n{current_price}\n\n Ссылка: {url}",
-        parse_mode="Markdown",
+        f"<b>Товар добавлен на мониторинг!</b>\n\n"
+        f"<b>Текущая цена:</b> {current_price}\n\n"
+        f"Я буду периодически проверять её и пришлю уведомление, если она изменится.",
+        parse_mode="HTML",
+        disable_web_page_preview=True,
     )
+
+
+@dp.startup()
+async def on_startup():
+    global monitoring_task
+    await init_db()
+    monitoring_task = asyncio.create_task(price_monitoring_loop())
+    logger.info("Startup complete. Background loops registered.")
+
+
+@dp.shutdown()
+async def on_shutdown():
+    global monitoring_task
+    if monitoring_task:
+        monitoring_task.cancel()
+        logger.info("Background tasks cleaned up.")
 
 
 async def main():
     global browser
 
-    # init_db()
-
     logger.info("Starting global browser...")
     async with Stealth().use_async(async_playwright()) as p:
-        async with await p.chromium.launch(headless=True) as br:
-            browser = br
+        async with await p.chromium.launch(headless=True) as b:
+            browser = b
             logger.info("Bot is starting to poll...")
             await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("Bot execution terminated.")
