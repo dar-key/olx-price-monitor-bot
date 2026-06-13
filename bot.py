@@ -6,6 +6,7 @@ import re
 from aiogram import Bot, Dispatcher
 from aiogram.filters import CommandStart
 from aiogram.types import Message
+from aiogram.exceptions import TelegramForbiddenError
 from playwright.async_api import (
     async_playwright,
     TimeoutError as PlaywrightTimeoutError,
@@ -65,6 +66,12 @@ async def get_all_monitors():
             "SELECT user_id, url, last_price FROM monitors"
         ) as cursor:
             return await cursor.fetchall()
+
+
+async def delete_all_user_monitors(user_id: int):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("DELETE FROM monitors WHERE user_id = ?", (user_id,))
+        await db.commit()
 
 
 async def parse_olx_first_price(url: str) -> str:
@@ -136,6 +143,11 @@ async def price_monitoring_loop():
                             parse_mode="HTML",
                             disable_web_page_preview=False,
                         )
+                    except TelegramForbiddenError:
+                        logger.warning(
+                            f"User {user_id} has blocked the bot. Removing monitors."
+                        )
+                        await delete_all_user_monitors(user_id)
                     except Exception as e:
                         logger.error(
                             f"Could not deliver notification to user {user_id}: {e}"
