@@ -4,7 +4,7 @@ import logging
 import os
 import re
 from aiogram import Bot, Dispatcher
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram.types import Message
 from aiogram.exceptions import TelegramForbiddenError
 from playwright.async_api import (
@@ -163,8 +163,29 @@ async def price_monitoring_loop():
 @dp.message(CommandStart())
 async def cmd_start(message: Message):
     await message.answer(
-        "Привет! Я бот-монитор OLX.\nОтправь мне ссылку на поисковую выдачу или объявление OLX, и я покажу тебе актуальную цену последнего объявления."
+        "Привет! Я бот-монитор OLX.\nОтправь мне ссылку на поисковую выдачу или объявление OLX, и я покажу тебе актуальную цену последнего объявления. Я также могу следить за изменениями цены"
     )
+
+
+@dp.message(Command("list"))
+async def list_monitors(message: Message):
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute(
+            "SELECT url, last_price FROM monitors WHERE user_id = ?",
+            (message.from_user.id,),
+        ) as cursor:
+            fetched_data = await cursor.fetchall()
+
+    if not fetched_data:
+        await message.answer("Вы пока не отслеживаете объявления.")
+        return
+
+    ans = "Список всех объявлений, которые вы отслеживаете:"
+    for i, (url, last_price) in enumerate(fetched_data, start=1):
+        clean_url = url.split("?")[0]
+        ans += f"\n\n{i}. {clean_url} - {last_price} тг."
+
+    await message.answer(ans, disable_web_page_preview=True)
 
 
 @dp.message()
