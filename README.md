@@ -1,5 +1,9 @@
-# Requirements:
+Setup:
 
 ```
-pip install aiogram playwright playwright-stealth aiosqlite python-dotenv
+pip install -r requirements.txt
+
+playwright install chromium
 ```
+
+Then run bot.py.

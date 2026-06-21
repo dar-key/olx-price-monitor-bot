@@ -183,7 +183,7 @@ async def list_monitors(message: Message):
     ans = "Список всех объявлений, которые вы отслеживаете:"
     for i, (url, last_price) in enumerate(fetched_data, start=1):
         clean_url = url.split("?")[0]
-        ans += f"\n\n{i}. {clean_url} - {last_price} тг."
+        ans += f"\n\n{i}. {clean_url} - {last_price}"
 
     await message.answer(ans, disable_web_page_preview=True)
 
@@ -241,11 +241,19 @@ async def main():
     global browser
 
     logger.info("Starting global browser...")
-    async with Stealth().use_async(async_playwright()) as p:
-        async with await p.chromium.launch(headless=True) as b:
-            browser = b
-            logger.info("Bot is starting to poll...")
-            await dp.start_polling(bot)
+
+    try:
+        async with Stealth().use_async(async_playwright()) as p:
+            async with await p.chromium.launch(headless=True) as b:
+                browser = b
+                logger.info("Bot is starting to poll...")
+                await dp.start_polling(bot)
+
+    except Exception as e:
+        if "Connection closed while reading from the driver" in str(e):
+            logger.info("Browser process closed during shutdown sequence")
+        else:
+            raise e
 
 
 if __name__ == "__main__":
