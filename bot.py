@@ -4,7 +4,7 @@ import logging
 import os
 import re
 from aiogram import Bot, Dispatcher
-from aiogram.filters import CommandStart, Command
+from aiogram.filters import CommandObject, CommandStart, Command
 from aiogram.types import Message
 from aiogram.exceptions import TelegramForbiddenError
 from playwright.async_api import (
@@ -39,8 +39,9 @@ async def init_db():
         await db.execute("""
         CREATE TABLE IF NOT EXISTS monitors (
             user_id INTEGER,
-            url TEXT UNIQUE,
-            last_price TEXT
+            url TEXT,
+            last_price TEXT,
+            UNIQUE(user_id, url)
         )
     """)
         await db.commit()
@@ -66,6 +67,15 @@ async def get_all_monitors():
             "SELECT user_id, url, last_price FROM monitors"
         ) as cursor:
             return await cursor.fetchall()
+
+
+async def delete_single_monitor(user_id: int, url: str):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute(
+            "DELETE FROM monitors WHERE user_id = ? AND url = ?",
+            (user_id, url),
+        )
+        await db.commit()
 
 
 async def delete_all_user_monitors(user_id: int):
@@ -188,6 +198,46 @@ async def list_monitors(message: Message):
     await message.answer(ans, disable_web_page_preview=True)
 
 
+@dp.message(Command("delete"))
+async def delete_monitor(message: Message, command: CommandObject):
+    async def send_command_error():
+        await message.answer(
+            "Ошибка: укажите правильный номер объявления из списка (/list) для удаления. Пример: /delete 2"
+        )
+
+    if not command.args:
+        await send_command_error()
+        return
+
+    try:
+        index_to_delete = int(command.args.strip())
+    except ValueError:
+        await send_command_error()
+        return
+
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute(
+            "SELECT url FROM monitors WHERE user_id = ?", (message.from_user.id,)
+        ) as cursor:
+            fetched_data = await cursor.fetchall()
+
+    if not fetched_data:
+        await message.answer("Вы пока не отслеживаете объявления.")
+        return
+
+    if index_to_delete < 1 or index_to_delete > len(fetched_data):
+        await send_command_error()
+        return
+
+    url_to_delete = fetched_data[index_to_delete - 1][0]
+    await delete_single_monitor(message.from_user.id, url_to_delete)
+
+    clean_url = url_to_delete.split("?")[0]
+    await message.answer(
+        f"Объявление №{index_to_delete} было удалено. Ссылка: {clean_url}"
+    )
+
+
 @dp.message()
 async def handle_link(message: Message):
     url = message.text
@@ -260,4 +310,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
-        logger.info("Bot execution terminated.")
+        logger.info("Bot stopped.")
