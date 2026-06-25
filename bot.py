@@ -70,6 +70,15 @@ async def get_all_monitors():
             return await cursor.fetchall()
 
 
+async def get_user_monitors_count(user_id: int) -> int:
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM monitors WHERE user_id = ?", (user_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0
+
+
 async def delete_single_monitor(user_id: int, url: str):
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute(
@@ -242,6 +251,7 @@ async def delete_monitor(message: Message, command: CommandObject):
 @dp.message()
 async def handle_link(message: Message):
     url = message.text
+    MAX_MONITOR_COUNT = 20
 
     if not url or "olx.kz" not in url:
         await message.answer("Пожалуйста, отправь корректную ссылку на сайт olx.kz")
@@ -261,15 +271,23 @@ async def handle_link(message: Message):
         )
         return
 
-    await save_monitor(message.from_user.id, url, current_price)
+    if await get_user_monitors_count(message.from_user.id) < MAX_MONITOR_COUNT:
+        await save_monitor(message.from_user.id, url, current_price)
 
-    await message.answer(
-        f"<b>Товар добавлен на мониторинг!</b>\n\n"
-        f"<b>Текущая цена:</b> {current_price}\n\n"
-        f"Я буду периодически проверять её и пришлю уведомление, если она изменится.",
-        parse_mode="HTML",
-        disable_web_page_preview=True,
-    )
+        await message.answer(
+            f"<b>Товар добавлен на мониторинг!</b>\n\n"
+            f"<b>Текущая цена:</b> {current_price}\n\n"
+            f"Я буду периодически проверять её и пришлю уведомление, если она изменится.",
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
+    else:
+        await message.answer(
+            f"<b>Текущая цена:</b> {current_price}\n\n"
+            f"Не удалось добавить товар на мониторинг. Лимит исчерпан: отслеживаются {MAX_MONITOR_COUNT} объявлений.",
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
 
 
 @dp.startup()
