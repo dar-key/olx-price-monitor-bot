@@ -1,4 +1,5 @@
 import asyncio
+import html
 import aiosqlite
 import logging
 import os
@@ -120,7 +121,7 @@ async def parse_olx_first_price(url: str) -> str:
 async def price_monitoring_loop():
     while True:
         try:
-            # Check prices every 15 min (900 sec)
+            # Check prices every 15 min
             await asyncio.sleep(900)
 
             logger.info("Executing scheduled price monitoring cycle...")
@@ -148,7 +149,7 @@ async def price_monitoring_loop():
                                 f"<b>Изменение цены на OLX!</b>\n\n"
                                 f"Старая цена: <s>{last_price}</s>\n"
                                 f"Новая цена: <b>{current_price}</b>\n\n"
-                                f"<a href='{url}'>{url}</a>"
+                                f"<a href='{html.escape(url)}'>Ссылка на объявление</a>"
                             ),
                             parse_mode="HTML",
                             disable_web_page_preview=False,
