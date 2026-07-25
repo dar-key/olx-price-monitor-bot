@@ -1,73 +1,132 @@
-## [Ссылка для теста бота](https://t.me/olx_monitor_temp_bot)
+# OLX Price Monitor Telegram Bot
 
+A Telegram bot that monitors OLX.kz listings and sends a notification whenever the price changes.
 
-# Telegram-бот для мониторинга цен на OLX.kz
+Built with **Python**, **aiogram 3**, **Playwright**, and **SQLite**. The bot periodically checks tracked listings in the background and supports multiple users.
 
-Асинхронный Telegram-бот на базе **aiogram 3** и **Playwright**, который отслеживает изменения цен на товары по ссылкам с OLX.kz и автоматически отправляет уведомления пользователям при их изменении.
+> **Demo Bot**
+>
+> https://t.me/olx_monitor_temp_bot
 
-## Основной функционал
+---
 
-- Автоматический фоновый цикл проверки цен (запускается каждые 15 минут).
-- Парсинг динамических страниц OLX с извлечением цены по регулярному выражению (KZT / ₸).
-- Обход базовых систем защиты от ботов с помощью `playwright-stealth` и подмены User-Agent.
-- Многопользовательский режим работы на базе SQLite (составной уникальный ключ для исключения коллизий).
-- Ограничение лимитов на сервере (не более 3 активных отслеживаний на одного пользователя).
-- Graceful shutdown: корректное закрытие сессий браузера и обработка системных прерываний (Ctrl+C).
+## Demo
 
-## Команды бота
+### Add a listing
 
-- `/start` — начало работы и инструкция.
-- `/list` — вывод списка всех ваших отслеживаемых объявлений и их текущих цен.
-- `/delete [номер]` — удаление конкретного объявления из мониторинга по его номеру из списка.
-- `[Ссылка на OLX]` — отправка любой корректной ссылки olx.kz автоматически добавляет её на мониторинг (если не превышен лимит).
+![Add listing](docs/demo-add.gif)
 
-## Установка и запуск
+---
 
-1. Клонируйте репозиторий:
+### Price change notification
+
+![Price change](docs/price-change.gif)
+
+---
+
+## Features
+
+- Monitor multiple OLX.kz listings
+- Automatic price checks every 15 minutes
+- Telegram notifications on price changes
+- Multi-user support
+- SQLite storage
+- Dynamic page scraping with Playwright
+- Basic anti-bot handling using `playwright-stealth`
+- Graceful shutdown
+- Per-user tracking limit
+
+---
+
+## Commands
+
+| Command                  | Description                 |
+| ------------------------ | --------------------------- |
+| `/start`                 | Start the bot               |
+| `/list`                  | Show tracked listings       |
+| `/delete <number>`       | Remove a listing            |
+| `https://www.olx.kz/...` | Add a listing to monitoring |
+
+---
+
+## Installation
+
+Clone the repository.
 
 ```bash
 git clone https://github.com/dar-key/olx-monitor-telegram-bot.git
 cd olx-monitor-telegram-bot
 ```
 
-2. Создайте и активируйте виртуальное окружение:
+Create a virtual environment.
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate  # Для Linux/macOS
-.venv\Scripts\activate     # Для Windows
 ```
 
-3. Установите зависимости:
+Activate it.
+
+Linux / macOS
+
+```bash
+source .venv/bin/activate
+```
+
+Windows
+
+```powershell
+.venv\Scripts\activate
+```
+
+Install dependencies.
 
 ```bash
 pip install -r requirements.txt
 ```
 
-4. Создайте файл конфигурации `.env` в корне проекта:
+Create a `.env` file.
 
 ```env
-BOT_TOKEN=your_telegram_bot_token_here
+BOT_TOKEN=your_bot_token
 ```
 
-5. Установите браузер Chromium для Playwright:
+Install Chromium.
 
 ```bash
 playwright install chromium
 ```
 
-6. Запустите бота:
+Run the bot.
 
 ```bash
 python bot.py
 ```
 
-## Важное примечание для деплоя на Linux (Ubuntu/Debian)
+---
 
-Если вы запускаете бота на чистом Linux-сервере (VPS) в фоновом режиме, Playwright может выдать ошибку из-за отсутствия системных графических библиотек (даже вheadless-режиме).
+## Deploying on Linux
 
-Чтобы исправить это, установите Chromium вместе со всеми системными зависимостями ОС одной командой:
+When deploying to a fresh Ubuntu or Debian server, Chromium may require additional system libraries.
+
+Install Chromium together with its dependencies:
 
 ```bash
 playwright install --with-deps chromium
 ```
+
+---
+
+## Tech Stack
+
+- Python 3.11+
+- aiogram 3
+- Playwright
+- playwright-stealth
+- SQLite
+- python-dotenv
+
+---
+
+## License
+
+MIT
