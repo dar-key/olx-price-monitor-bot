@@ -1,19 +1,22 @@
 import asyncio
 import html
-import aiosqlite
 import logging
 import os
 import re
+
+import aiosqlite
 from aiogram import Bot, Dispatcher
-from aiogram.filters import CommandObject, CommandStart, Command
-from aiogram.types import Message
 from aiogram.exceptions import TelegramForbiddenError
+from aiogram.filters import Command, CommandObject, CommandStart
+from aiogram.types import Message
+from dotenv import load_dotenv
 from playwright.async_api import (
-    async_playwright,
     TimeoutError as PlaywrightTimeoutError,
 )
+from playwright.async_api import (
+    async_playwright,
+)
 from playwright_stealth import Stealth
-from dotenv import load_dotenv
 
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -103,7 +106,6 @@ async def parse_olx_first_price(url: str) -> str:
         viewport={"width": 1920, "height": 1080},
         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
     ) as context:
-
         page = await context.new_page()
 
         try:
@@ -328,5 +330,5 @@ async def main():
 if __name__ == "__main__":
     try:
         asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
+    except KeyboardInterrupt, SystemExit:
         logger.info("Bot stopped.")
