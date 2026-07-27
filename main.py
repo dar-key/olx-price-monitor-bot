@@ -3,13 +3,20 @@ import html
 import logging
 import os
 import re
+import sys
 
 import aiosqlite
 from aiogram import Bot, Dispatcher
-from aiogram.exceptions import TelegramForbiddenError
+from aiogram.exceptions import (
+    TelegramAPIError,
+    TelegramForbiddenError,
+    TelegramNetworkError,
+    TelegramRetryAfter,
+)
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import Message
 from dotenv import load_dotenv
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import (
     TimeoutError as PlaywrightTimeoutError,
 )
@@ -23,7 +30,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 if not BOT_TOKEN:
     print("Error: no bot token")
-    exit()
+    sys.exit()
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -66,20 +73,22 @@ async def save_monitor(user_id: int, url: str, price: str):
 
 
 async def get_all_monitors():
-    async with aiosqlite.connect(DB_NAME) as db:
-        async with db.execute(
-            "SELECT user_id, url, last_price FROM monitors"
-        ) as cursor:
-            return await cursor.fetchall()
+    async with (
+        aiosqlite.connect(DB_NAME) as db,
+        db.execute("SELECT user_id, url, last_price FROM monitors") as cursor,
+    ):
+        return await cursor.fetchall()
 
 
 async def get_user_monitors_count(user_id: int) -> int:
-    async with aiosqlite.connect(DB_NAME) as db:
-        async with db.execute(
+    async with (
+        aiosqlite.connect(DB_NAME) as db,
+        db.execute(
             "SELECT COUNT(*) FROM monitors WHERE user_id = ?", (user_id,)
-        ) as cursor:
-            row = await cursor.fetchone()
-            return row[0] if row else 0
+        ) as cursor,
+    ):
+        row = await cursor.fetchone()
+        return row[0] if row else 0
 
 
 async def delete_single_monitor(user_id: int, url: str):
@@ -98,7 +107,6 @@ async def delete_all_user_monitors(user_id: int):
 
 
 async def parse_olx_first_price(url: str) -> str:
-    global browser
     if not browser:
         return "Error: browser is not initialized yet"
 
@@ -124,62 +132,81 @@ async def parse_olx_first_price(url: str) -> str:
             await page.screenshot(path="debug_screenshot.png")
             return "Error: Could not find price layout on this page"
 
-        except Exception as e:
-            logger.error(f"Unexpected error while parsing {url}: {e}")
-            return f"Error: Unexpected browser failure ({type(e).__name__})"
+        except PlaywrightError as e:
+            logger.error(f"Browser action failed while parsing {url}: {e}")
+            return f"Error: Browser failure ({type(e).__name__})"
+
+
+async def process_single_monitor(user_id: int, url: str, last_price: str):
+    try:
+        current_price = await parse_olx_first_price(url)
+
+        if current_price.startswith("Error"):
+            logger.warning(f"Background check failed for monitored URL: {url}")
+            return
+
+        # Price change
+        if current_price == last_price:
+            return
+
+        logger.info(
+            f"Price shift detected for user {user_id}: {last_price} -> {current_price}"
+        )
+
+        await save_monitor(user_id, url, current_price)
+
+        await bot.send_message(
+            chat_id=user_id,
+            text=(
+                f"<b>Изменение цены на OLX!</b>\n\n"
+                f"Старая цена: <s>{last_price}</s>\n"
+                f"Новая цена: <b>{current_price}</b>\n\n"
+                f"<a href='{html.escape(url)}'>Ссылка на объявление</a>"
+            ),
+            parse_mode="HTML",
+            disable_web_page_preview=False,
+        )
+
+    except TelegramForbiddenError:
+        logger.warning(f"User {user_id} has blocked the bot. Removing monitors.")
+        await delete_all_user_monitors(user_id)
+
+    except TelegramRetryAfter as e:
+        logger.warning(f"Flood limit reached. Sleeping for {e.retry_after} seconds.")
+        await asyncio.sleep(e.retry_after)
+
+    except (TelegramNetworkError, TelegramAPIError) as e:
+        logger.error(f"Telegram failed to deliver to {user_id}: {e}")
+
+    except PlaywrightError as e:
+        logger.error(f"Playwright failed to parse browser for {url}: {e}")
+
+    except (ValueError, KeyError, IndexError) as e:
+        logger.error(f"Data parsing error processing monitor for {user_id}: {e}")
 
 
 async def price_monitoring_loop():
     while True:
         try:
-            # Check prices every 15 min
-            await asyncio.sleep(900)
-
             logger.info("Executing scheduled price monitoring cycle...")
             monitors = await get_all_monitors()
 
-            for user_id, url, last_price in monitors:
-                current_price = await parse_olx_first_price(url)
-
-                if current_price.startswith("Error"):
-                    logger.warning(f"Background check failed for monitored URL: {url}")
-                    continue
-
-                # Price change
-                if current_price != last_price:
-                    logger.info(
-                        f"Price shift detected for user {user_id}: {last_price} -> {current_price}"
-                    )
-
-                    await save_monitor(user_id, url, current_price)
-
-                    try:
-                        await bot.send_message(
-                            chat_id=user_id,
-                            text=(
-                                f"<b>Изменение цены на OLX!</b>\n\n"
-                                f"Старая цена: <s>{last_price}</s>\n"
-                                f"Новая цена: <b>{current_price}</b>\n\n"
-                                f"<a href='{html.escape(url)}'>Ссылка на объявление</a>"
-                            ),
-                            parse_mode="HTML",
-                            disable_web_page_preview=False,
-                        )
-                    except TelegramForbiddenError:
-                        logger.warning(
-                            f"User {user_id} has blocked the bot. Removing monitors."
-                        )
-                        await delete_all_user_monitors(user_id)
-                    except Exception as e:
-                        logger.error(
-                            f"Could not deliver notification to user {user_id}: {e}"
-                        )
+            if monitors:
+                tasks = [
+                    process_single_monitor(uid, url, price)
+                    for uid, url, price in monitors
+                ]
+                await asyncio.gather(*tasks)
 
         except asyncio.CancelledError:
             logger.info("Price monitoring loop canceled gracefully.")
             break
-        except Exception as e:
-            logger.error(f"Error in price monitoring task: {e}")
+
+        except Exception:
+            logger.exception("Critical error in the main loop wrapper.")
+
+        # Check prices every 15 min
+        await asyncio.sleep(900)
 
 
 @dp.message(CommandStart())
@@ -191,12 +218,17 @@ async def cmd_start(message: Message):
 
 @dp.message(Command("list"))
 async def list_monitors(message: Message):
-    async with aiosqlite.connect(DB_NAME) as db:
-        async with db.execute(
+    if not message.from_user:
+        return
+
+    async with (
+        aiosqlite.connect(DB_NAME) as db,
+        db.execute(
             "SELECT url, last_price FROM monitors WHERE user_id = ?",
             (message.from_user.id,),
-        ) as cursor:
-            fetched_data = await cursor.fetchall()
+        ) as cursor,
+    ):
+        fetched_data = await cursor.fetchall()
 
     if not fetched_data:
         await message.answer("Вы пока не отслеживаете объявления.")
@@ -212,12 +244,13 @@ async def list_monitors(message: Message):
 
 @dp.message(Command("delete"))
 async def delete_monitor(message: Message, command: CommandObject):
+    # guards
     async def send_command_error():
         await message.answer(
             "Ошибка: укажите правильный номер объявления из списка (/list) для удаления. Пример: /delete 2"
         )
 
-    if not command.args:
+    if not command.args or not message.from_user:
         await send_command_error()
         return
 
@@ -227,21 +260,25 @@ async def delete_monitor(message: Message, command: CommandObject):
         await send_command_error()
         return
 
-    async with aiosqlite.connect(DB_NAME) as db:
-        async with db.execute(
-            "SELECT url FROM monitors WHERE user_id = ?", (message.from_user.id,)
-        ) as cursor:
-            fetched_data = await cursor.fetchall()
+    # fetching
+    async with (
+        aiosqlite.connect(DB_NAME) as db,
+        db.execute(
+            "SELECT url FROM monitors WHERE user_id = ? LIMIT 1 OFFSET ?",
+            (
+                message.from_user.id,
+                index_to_delete - 1,
+            ),
+        ) as cursor,
+    ):
+        fetched_row = await cursor.fetchone()
 
-    if not fetched_data:
-        await message.answer("Вы пока не отслеживаете объявления.")
-        return
-
-    if index_to_delete < 1 or index_to_delete > len(fetched_data):
+    if not fetched_row:
         await send_command_error()
         return
 
-    url_to_delete = fetched_data[index_to_delete - 1][0]
+    # deleting
+    url_to_delete = fetched_row[0]
     await delete_single_monitor(message.from_user.id, url_to_delete)
 
     clean_url = url_to_delete.split("?")[0]
@@ -252,6 +289,9 @@ async def delete_monitor(message: Message, command: CommandObject):
 
 @dp.message()
 async def handle_link(message: Message):
+    if not message.from_user:
+        return
+
     url = message.text
     MAX_MONITOR_COUNT = 20
 
@@ -268,8 +308,8 @@ async def handle_link(message: Message):
 
     if current_price.startswith("Error"):
         await message.answer(
-            f"Не удалось получить цену!\n\n"
-            f"Убедитесь, что объявление актуально и ссылка открывается"
+            "Не удалось получить цену!\n\n"
+            "Убедитесь, что объявление актуально и ссылка открывается"
         )
         return
 
@@ -285,8 +325,8 @@ async def handle_link(message: Message):
         )
     else:
         await message.answer(
-            f"<b>Текущая цена:</b> {current_price}\n\n"
-            f"Не удалось добавить товар на мониторинг. Лимит исчерпан: отслеживаются {MAX_MONITOR_COUNT} объявлений.",
+            f"Не удалось добавить товар на мониторинг. Лимит исчерпан: отслеживаются {MAX_MONITOR_COUNT} объявлений."
+            f"<b>Текущая цена:</b> {current_price}\n\n",
             parse_mode="HTML",
             disable_web_page_preview=True,
         )
@@ -302,7 +342,6 @@ async def on_startup():
 
 @dp.shutdown()
 async def on_shutdown():
-    global monitoring_task
     if monitoring_task:
         monitoring_task.cancel()
         logger.info("Background tasks cleaned up.")
@@ -314,17 +353,19 @@ async def main():
     logger.info("Starting global browser...")
 
     try:
-        async with Stealth().use_async(async_playwright()) as p:
-            async with await p.chromium.launch(headless=True) as b:
-                browser = b
-                logger.info("Bot is starting to poll...")
-                await dp.start_polling(bot)
+        async with (
+            Stealth().use_async(async_playwright()) as p,
+            await p.chromium.launch(headless=True) as b,
+        ):
+            browser = b
+            logger.info("Bot is starting to poll...")
+            await dp.start_polling(bot)
 
     except Exception as e:
         if "Connection closed while reading from the driver" in str(e):
             logger.info("Browser process closed during shutdown sequence")
         else:
-            raise e
+            raise
 
 
 if __name__ == "__main__":
