@@ -4,6 +4,8 @@ import logging
 import os
 import re
 import sys
+import time
+from urllib.parse import urlparse
 
 import aiosqlite
 from aiogram import Bot, Dispatcher
@@ -43,6 +45,19 @@ dp = Dispatcher()
 browser = None
 monitoring_task = None
 DB_NAME = "database.db"
+MAX_CONCURRENT_SCRAPES = 5
+scrape_semaphore = asyncio.Semaphore(MAX_CONCURRENT_SCRAPES)
+
+
+def is_valid_olx_url(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    host = (parsed.hostname or "").lower()
+    return host == "olx.kz" or host.endswith(".olx.kz")
 
 
 async def init_db():
@@ -60,7 +75,6 @@ async def init_db():
 
 
 async def save_monitor(user_id: int, url: str, price: str):
-
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute(
             """
@@ -110,6 +124,9 @@ async def parse_olx_first_price(url: str) -> str:
     if not browser:
         return "Error: browser is not initialized yet"
 
+    if not is_valid_olx_url(url):
+        return "Error: invalid or disallowed URL"
+
     async with await browser.new_context(
         viewport={"width": 1920, "height": 1080},
         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
@@ -129,7 +146,7 @@ async def parse_olx_first_price(url: str) -> str:
 
         except PlaywrightTimeoutError:
             logger.error(f"Timeout trying to parse: {url}")
-            await page.screenshot(path="debug_screenshot.png")
+            await page.screenshot(path=f"debug_{int(time.time() * 1000)}.png")
             return "Error: Could not find price layout on this page"
 
         except PlaywrightError as e:
@@ -139,13 +156,13 @@ async def parse_olx_first_price(url: str) -> str:
 
 async def process_single_monitor(user_id: int, url: str, last_price: str):
     try:
-        current_price = await parse_olx_first_price(url)
+        async with scrape_semaphore:
+            current_price = await parse_olx_first_price(url)
 
         if current_price.startswith("Error"):
             logger.warning(f"Background check failed for monitored URL: {url}")
             return
 
-        # Price change
         if current_price == last_price:
             return
 
@@ -159,8 +176,8 @@ async def process_single_monitor(user_id: int, url: str, last_price: str):
             chat_id=user_id,
             text=(
                 f"<b>Изменение цены на OLX!</b>\n\n"
-                f"Старая цена: <s>{last_price}</s>\n"
-                f"Новая цена: <b>{current_price}</b>\n\n"
+                f"Старая цена: <s>{html.escape(last_price)}</s>\n"
+                f"Новая цена: <b>{html.escape(current_price)}</b>\n\n"
                 f"<a href='{html.escape(url)}'>Ссылка на объявление</a>"
             ),
             parse_mode="HTML",
@@ -177,9 +194,6 @@ async def process_single_monitor(user_id: int, url: str, last_price: str):
 
     except (TelegramNetworkError, TelegramAPIError) as e:
         logger.error(f"Telegram failed to deliver to {user_id}: {e}")
-
-    except PlaywrightError as e:
-        logger.error(f"Playwright failed to parse browser for {url}: {e}")
 
     except (ValueError, KeyError, IndexError) as e:
         logger.error(f"Data parsing error processing monitor for {user_id}: {e}")
@@ -205,7 +219,7 @@ async def price_monitoring_loop():
         except Exception:
             logger.exception("Critical error in the main loop wrapper.")
 
-        # Check prices every 15 min
+        # 15 min
         await asyncio.sleep(900)
 
 
@@ -236,8 +250,7 @@ async def list_monitors(message: Message):
 
     ans = "Список всех объявлений, которые вы отслеживаете:"
     for i, (url, last_price) in enumerate(fetched_data, start=1):
-        clean_url = url.split("?")[0]
-        ans += f"\n\n{i}. {clean_url} - {last_price}"
+        ans += f"\n\n{i}. {url} - {last_price}"
 
     await message.answer(ans, disable_web_page_preview=True)
 
@@ -289,13 +302,13 @@ async def delete_monitor(message: Message, command: CommandObject):
 
 @dp.message()
 async def handle_link(message: Message):
-    if not message.from_user:
+    if not message.from_user or not message.text:
         return
 
-    url = message.text
+    url = message.text.split("?")[0]
     MAX_MONITOR_COUNT = 20
 
-    if not url or "olx.kz" not in url:
+    if not url or not is_valid_olx_url(url):
         await message.answer("Пожалуйста, отправь корректную ссылку на сайт olx.kz")
         return
 
@@ -318,15 +331,15 @@ async def handle_link(message: Message):
 
         await message.answer(
             f"<b>Товар добавлен на мониторинг!</b>\n\n"
-            f"<b>Текущая цена:</b> {current_price}\n\n"
+            f"<b>Текущая цена:</b> {html.escape(current_price)}\n\n"
             f"Я буду периодически проверять её и пришлю уведомление, если она изменится.",
             parse_mode="HTML",
             disable_web_page_preview=True,
         )
     else:
         await message.answer(
-            f"Не удалось добавить товар на мониторинг. Лимит исчерпан: отслеживаются {MAX_MONITOR_COUNT} объявлений."
-            f"<b>Текущая цена:</b> {current_price}\n\n",
+            f"Не удалось добавить товар на мониторинг. Лимит исчерпан: отслеживаются {MAX_MONITOR_COUNT} объявлений.\n\n"
+            f"<b>Текущая цена:</b> {html.escape(current_price)}\n\n",
             parse_mode="HTML",
             disable_web_page_preview=True,
         )
