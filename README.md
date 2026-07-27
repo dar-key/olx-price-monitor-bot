@@ -1,6 +1,6 @@
 # OLX Price Monitor Telegram Bot
 
-A Telegram bot that monitors OLX.kz listings and sends a notification whenever the price changes.
+A Telegram bot that monitors OLX.kz listings and sends a notification whenever the price changes. OLX
 
 Built with **Python**, **aiogram 3**, **Playwright**, and **SQLite**. The bot periodically checks tracked listings in the background and supports multiple users.
 
@@ -12,15 +12,21 @@ Built with **Python**, **aiogram 3**, **Playwright**, and **SQLite**. The bot pe
 
 ## Demo
 
+OLX Kazakhstan's primary audience is Russian-speaking, hence the bot's language.
+
 ### Add a listing
 
 ![Add listing](docs/demo-add.gif)
+
+> user sends an olx link -> bot returns price and starts tracking this link
 
 ---
 
 ### Price change notification
 
 ![Price change](docs/price-change.gif)
+
+> listing price changed -> notification with the new price
 
 ---
 
@@ -51,79 +57,55 @@ Built with **Python**, **aiogram 3**, **Playwright**, and **SQLite**. The bot pe
 
 ## Installation
 
-Clone the repository.
+1. Clone the repository.
 
-```bash
-git clone https://github.com/dar-key/olx-monitor-telegram-bot.git
-cd olx-monitor-telegram-bot
-```
+   ```bash
+   git clone https://github.com/dar-key/olx-monitor-telegram-bot.git
+   cd olx-monitor-telegram-bot
+   ```
 
-Create a virtual environment.
+2. Install the dependencies.
 
-```bash
-python -m venv .venv
-```
+   ```bash
+   uv sync
+   ```
 
-Activate it.
+3. Install Chromium.
 
-Linux / macOS
+   Linux
 
-```bash
-source .venv/bin/activate
-```
+   ```bash
+   uv run playwright install --with-deps chromium
+   ```
 
-Windows
+   Windows
 
-```powershell
-.venv\Scripts\activate
-```
+   ```bash
+   uv run playwright install chromium
+   ```
 
-Install dependencies.
+4. Copy the environment template to a new `.env` file and add your bot token:
 
-```bash
-pip install -r requirements.txt
-```
+   ```bash
+   cp .env.example .env
+   ```
 
-Create a `.env` file.
+5. Run the bot.
 
-```env
-BOT_TOKEN=your_bot_token
-```
-
-Install Chromium.
-
-```bash
-playwright install chromium
-```
-
-Run the bot.
-
-```bash
-python bot.py
-```
-
----
-
-## Deploying on Linux
-
-When deploying to a fresh Ubuntu or Debian server, Chromium may require additional system libraries.
-
-Install Chromium together with its dependencies:
-
-```bash
-playwright install --with-deps chromium
-```
+   ```bash
+   uv run task start
+   ```
 
 ---
 
 ## Tech Stack
 
 - Python 3.11+
+- uv
 - aiogram 3
 - Playwright
 - playwright-stealth
-- SQLite
-- python-dotenv
+- aiosqlite (SQLite)
 
 ---
 
