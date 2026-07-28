@@ -1,6 +1,6 @@
 # OLX Price Monitor Telegram Bot
 
-A Telegram bot that monitors OLX.kz listings and sends a notification whenever the price changes. OLX
+A Telegram bot that monitors OLX.kz listings and sends a notification whenever the price changes.
 
 Built with **Python**, **aiogram 3**, **Playwright**, and **SQLite**. The bot periodically checks tracked listings in the background and supports multiple users.
 
@@ -96,6 +96,23 @@ OLX Kazakhstan's primary audience is Russian-speaking, hence the bot's language.
    uv run task start
    ```
 
+### Running with Docker
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+---
+
+## Testing
+
+```bash
+uv sync
+uv run pytest -v
+uv run ruff check .
+```
+
 ---
 
 ## Tech Stack
@@ -106,9 +123,3 @@ OLX Kazakhstan's primary audience is Russian-speaking, hence the bot's language.
 - Playwright
 - playwright-stealth
 - aiosqlite (SQLite)
-
----
-
-## License
-
-MIT
