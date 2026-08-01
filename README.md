@@ -60,8 +60,8 @@ OLX Kazakhstan's primary audience is Russian-speaking, hence the bot's language.
 1. Clone the repository.
 
    ```bash
-   git clone https://github.com/dar-key/olx-monitor-telegram-bot.git
-   cd olx-monitor-telegram-bot
+   git clone https://github.com/dar-key/olx-price-monitor-bot.git
+   cd olx-price-monitor-bot
    ```
 
 2. Install the dependencies.
@@ -84,7 +84,7 @@ OLX Kazakhstan's primary audience is Russian-speaking, hence the bot's language.
    uv run playwright install chromium
    ```
 
-4. Copy the environment template to a new `.env` file and add your bot token:
+4. Copy the environment template to a new `.env` file and add your values:
 
    ```bash
    cp .env.example .env
@@ -117,9 +117,10 @@ uv run ruff check .
 
 ## Tech Stack
 
-- Python 3.11+
+- Python 3.10+
 - uv
 - aiogram 3
 - Playwright
 - playwright-stealth
-- aiosqlite (SQLite)
+- aiosqlite (sqlite)
+- pytest
