@@ -1,9 +1,9 @@
 [project]
-name = "olx-monitor-bot"
+name = "olx-price-monitor-bot"
 version = "0.1.0"
-description = "Add your description here"
+description = "A telegram bot to monitor prices on olx.kz"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.10"
 dependencies = [
     "aiogram>=3.30.0",
     "aiosqlite>=0.22.1",
