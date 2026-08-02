@@ -24,7 +24,8 @@ async def get_user_monitors(user_id: int):
     async with (
         aiosqlite.connect(DB_NAME) as db,
         db.execute(
-            "SELECT url, last_price FROM monitors WHERE user_id = ?", (user_id,)
+            "SELECT url, last_price FROM monitors WHERE user_id = ? ORDER BY rowid",
+            (user_id,),
         ) as cursor,
     ):
         return await cursor.fetchall()
@@ -45,7 +46,7 @@ async def get_monitor_url_by_index(user_id: int, index_1_based: int) -> str | No
     async with (
         aiosqlite.connect(DB_NAME) as db,
         db.execute(
-            "SELECT url FROM monitors WHERE user_id = ? LIMIT 1 OFFSET ?",
+            "SELECT url FROM monitors WHERE user_id = ? ORDER BY rowid LIMIT 1 OFFSET ?",
             (user_id, index_1_based - 1),
         ) as cursor,
     ):
