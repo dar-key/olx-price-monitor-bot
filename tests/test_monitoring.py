@@ -23,6 +23,10 @@ async def test_process_single_monitor_removes_monitors_on_forbidden():
             "src.bot.services.monitoring.delete_all_user_monitors",
             new=AsyncMock(),
         ) as mock_delete,
+        patch(
+            "src.bot.services.monitoring.save_monitor",
+            new=AsyncMock(),
+        ),
     ):
         await process_single_monitor(
             bot, browser_manager, 123, "https://olx.kz/x", "1000 тг."
