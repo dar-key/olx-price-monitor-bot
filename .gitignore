@@ -6,3 +6,4 @@ __pycache__/
 *.db
 .ruff_cache
 .pytest_cache
+debug_screenshots/

@@ -1,6 +1,7 @@
+import hashlib
 import logging
+import os
 import re
-import time
 from urllib.parse import urlparse
 
 from playwright.async_api import Error as PlaywrightError
@@ -10,6 +11,9 @@ from src.bot.config import ALLOWED_DOMAIN
 from src.bot.scraping.browser import BrowserManager
 
 logger = logging.getLogger("olx_bot")
+
+DEBUG_DIR = "debug_screenshots"
+os.makedirs(DEBUG_DIR, exist_ok=True)
 
 PRICE_PATTERN = re.compile(r"\d+.*(тг\.|₸)", re.IGNORECASE)
 USER_AGENT = (
@@ -53,7 +57,8 @@ async def parse_olx_first_price(browser_manager: BrowserManager, url: str) -> st
 
         except PlaywrightTimeoutError:
             logger.error(f"Timeout trying to parse: {url}")
-            await page.screenshot(path=f"debug_{int(time.time() * 1000)}.png")
+            url_hash = hashlib.sha1(url.encode()).hexdigest()[:10]
+            await page.screenshot(path=f"{DEBUG_DIR}/{url_hash}.png")
             return "Error: Could not find price layout on this page"
 
         except PlaywrightError as e:
