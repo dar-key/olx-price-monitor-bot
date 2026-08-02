@@ -666,7 +666,7 @@ dev = [
 requires-dist = [
     { name = "aiogram", specifier = ">=3.30.0" },
     { name = "aiosqlite", specifier = ">=0.22.1" },
-    { name = "playwright", specifier = ">=1.61.0" },
+    { name = "playwright", specifier = "==1.61.0" },
     { name = "playwright-stealth", specifier = ">=2.0.3" },
 ]
 

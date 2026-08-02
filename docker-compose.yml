@@ -1,6 +1,8 @@
 services:
   bot:
     build: .
+    init: true # Prevents Chromium zombie processes from locking up system memory
+    ipc: host # Prevents Chromium crashes
     env_file:
       - .env
     restart: unless-stopped
