@@ -1,9 +1,35 @@
+# Virtual environments
 venv/
 .venv/
-__pycache__/
-*.png
-.env
-*.db
-.ruff_cache
-.pytest_cache
+env/
+
+# Python cache & bytecode
+**/__pycache__/
+*.py[cod]
+*$py.class
+
+# IDEs and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Caches & Logs
+.ruff_cache/
+.pytest_cache/
 debug_screenshots/
+*.log
+
+# Databases
+*.db
+*.sqlite3
+
+# Media and Assets
+*.png
+*.jpg
+*.jpeg
+
+# Secrets and Environment variables
+.env
+.env.*
+!.env.example

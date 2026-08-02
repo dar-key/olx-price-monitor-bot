@@ -1,11 +1,30 @@
+# Virtual environments & Python cache
 .venv/
 venv/
-__pycache__/
-*.pyc
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# Caches & Logs
+.ruff_cache/
+.pytest_cache/
+debug_screenshots/
+*.log
+
+# Databases & Media
+*.db
+*.sqlite3
+*.png
+*.jpg
+
+# Git & Docker metadata
 .git/
 .gitignore
-*.png
-*.db
-.ruff_cache
-.pytest_cache
-debug_screenshots/
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Docs & Tests
+*.md
+LICENSE
+tests/
