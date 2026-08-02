@@ -9,6 +9,7 @@ from src.bot.services.formatting import (
     monitor_added_message,
     monitor_limit_reached_message,
 )
+from src.bot.services.monitoring import scrape_semaphore
 
 router = Router(name="link")
 
@@ -27,7 +28,8 @@ async def handle_link(message: Message, browser_manager: BrowserManager) -> None
     waiting_msg = await message.answer(
         "Парсим данные через Headless-браузер, подождите..."
     )
-    current_price = await parse_olx_first_price(browser_manager, url)
+    async with scrape_semaphore:
+        current_price = await parse_olx_first_price(browser_manager, url)
     await waiting_msg.delete()
 
     if current_price.startswith("Error"):
