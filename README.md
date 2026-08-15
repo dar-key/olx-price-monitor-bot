@@ -36,15 +36,10 @@ OLX Kazakhstan's primary audience is Russian-speaking, hence the bot's language.
 
 ## Features
 
-- Monitor multiple OLX.kz listings
-- Automatic price checks every 15 minutes
-- Telegram notifications on price changes
-- Multi-user support
-- SQLite storage
-- Dynamic page scraping with Playwright
-- Basic anti-bot handling using `playwright-stealth`
-- Graceful shutdown
-- Per-user tracking limit
+- **Automated Listing Tracking:** Continuously monitors target marketplace listings at 15-minute intervals, calculating price variance and dispatching real-time alerts.
+- **Anti-Bot & Dynamic DOM Handling:** Uses headless Chromium automation via Playwright with stealth evasions (`playwright-stealth`) to extract data from JavaScript-rendered dynamic pages without triggering rate-limit bans.
+- **Multi-Tenant State Isolation:** Supports multiple concurrent users tracking isolated listing watchlists simultaneously via asynchronous SQLite storage.
+- **Containerized Data Persistence:** Packaged with Docker Compose and local volume persistence, ensuring tracked targets and historical price points persist across deployments and host reboots.
 
 ---
 
@@ -88,8 +83,8 @@ OLX Kazakhstan's primary audience is Russian-speaking, hence the bot's language.
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/dar-key/appointment-booking-bot.git
-cd appointment-booking-bot
+git clone https://github.com/dar-key/olx-price-monitor-bot.git
+cd olx-price-monitor-bot
 
 # 2. Install dependencies
 uv sync
